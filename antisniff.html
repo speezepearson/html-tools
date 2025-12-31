@@ -420,6 +420,11 @@
         }
 
         function handlePhysicalKeyPress(event) {
+            // Ignore keyboard events with Cmd or Ctrl held
+            if (event.metaKey || event.ctrlKey) {
+                return;
+            }
+
             if (event.key === 'Backspace') {
                 event.preventDefault();
                 if (password.length > 0) {
