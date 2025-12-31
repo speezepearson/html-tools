@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Encryptor</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            margin-top: 0;
+            color: #333;
+        }
+        label {
+            display: block;
+            margin-top: 15px;
+            font-weight: 500;
+            color: #555;
+        }
+        input[type="file"],
+        input[type="password"] {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+        }
+        .success {
+            color: #28a745;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Encrypt File</h1>
+        <label for="fileInput">Select File:</label>
+        <input type="file" id="fileInput" required>
+
+        <label for="password">Password:</label>
+        <input type="password" id="password" required>
+
+        <label for="confirmPassword">Confirm Password:</label>
+        <input type="password" id="confirmPassword" required>
+
+        <button id="encryptBtn">Encrypt & Download</button>
+
+        <div id="message"></div>
+    </div>
+
+    <!-- Decryption page template (hidden) -->
+    <template id="decryptionTemplate">
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Decrypt File</title>
+            <style>
+                body {
+                    font-family: system-ui, -apple-system, sans-serif;
+                    max-width: 600px;
+                    margin: 50px auto;
+                    padding: 20px;
+                    background: #f5f5f5;
+                }
+                .container {
+                    background: white;
+                    padding: 30px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                }
+                h1 {
+                    margin-top: 0;
+                    color: #333;
+                }
+                label {
+                    display: block;
+                    margin-top: 15px;
+                    font-weight: 500;
+                    color: #555;
+                }
+                input[type="password"] {
+                    width: 100%;
+                    padding: 8px;
+                    margin-top: 5px;
+                    border: 1px solid #ddd;
+                    border-radius: 4px;
+                    box-sizing: border-box;
+                }
+                button {
+                    margin-top: 20px;
+                    padding: 10px 20px;
+                    background: #28a745;
+                    color: white;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    font-size: 16px;
+                }
+                button:hover {
+                    background: #218838;
+                }
+                button:disabled {
+                    background: #ccc;
+                    cursor: not-allowed;
+                }
+                .error {
+                    color: #dc3545;
+                    margin-top: 10px;
+                }
+                .success {
+                    color: #28a745;
+                    margin-top: 10px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Decrypt File</h1>
+                <p>This page contains an encrypted file. Enter the password to decrypt and download it.</p>
+
+                <label for="password">Password:</label>
+                <input type="password" id="password" required>
+
+                <button id="decryptBtn">Decrypt & Download</button>
+
+                <div id="message"></div>
+            </div>
+
+            <script id="encryptedDataScript">
+                const encryptedData = __ENCRYPTED_DATA_PLACEHOLDER__;
+
+                const decryptBtn = document.getElementById('decryptBtn');
+                const passwordInput = document.getElementById('password');
+                const messageDiv = document.getElementById('message');
+
+                decryptBtn.addEventListener('click', async () => {
+                    try {
+                        messageDiv.textContent = '';
+
+                        const password = passwordInput.value;
+                        if (!password) {
+                            throw new Error('Please enter a password');
+                        }
+
+                        decryptBtn.disabled = true;
+                        messageDiv.textContent = 'Decrypting...';
+                        messageDiv.className = '';
+
+                        // Helper function to convert base64 to Uint8Array efficiently
+                        function base64ToUint8Array(base64) {
+                            const binary = atob(base64);
+                            const bytes = new Uint8Array(binary.length);
+                            for (let i = 0; i < binary.length; i++) {
+                                bytes[i] = binary.charCodeAt(i);
+                            }
+                            return bytes;
+                        }
+
+                        // Parse JWE structure
+                        const header = JSON.parse(atob(encryptedData.protected));
+                        const salt = new Uint8Array(header.p2s);
+                        const iterations = header.p2c;
+                        const iv = base64ToUint8Array(encryptedData.iv);
+                        const ciphertext = base64ToUint8Array(encryptedData.ciphertext);
+
+                        // Derive key using PBKDF2
+                        const passwordKey = await crypto.subtle.importKey(
+                            'raw',
+                            new TextEncoder().encode(password),
+                            'PBKDF2',
+                            false,
+                            ['deriveBits', 'deriveKey']
+                        );
+
+                        const aesKey = await crypto.subtle.deriveKey(
+                            {
+                                name: 'PBKDF2',
+                                salt: salt,
+                                iterations: iterations,
+                                hash: 'SHA-256'
+                            },
+                            passwordKey,
+                            { name: 'AES-GCM', length: 256 },
+                            false,
+                            ['decrypt']
+                        );
+
+                        // Decrypt the payload
+                        const decrypted = await crypto.subtle.decrypt(
+                            {
+                                name: 'AES-GCM',
+                                iv: iv
+                            },
+                            aesKey,
+                            ciphertext
+                        );
+
+                        // Parse payload
+                        const payloadJson = new TextDecoder().decode(decrypted);
+                        const payload = JSON.parse(payloadJson);
+                        const fileData = new Uint8Array(payload.data);
+                        const filename = payload.filename;
+
+                        // Download the file
+                        const blob = new Blob([fileData]);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = filename;
+                        a.click();
+                        URL.revokeObjectURL(url);
+
+                        messageDiv.textContent = 'Success! File decrypted and downloaded: ' + filename;
+                        messageDiv.className = 'success';
+                        decryptBtn.disabled = false;
+
+                    } catch (error) {
+                        console.error(error);
+                        messageDiv.textContent = 'Error: Failed to decrypt. Wrong password?';
+                        messageDiv.className = 'error';
+                        decryptBtn.disabled = false;
+                    }
+                });
+            </script>
+        </body>
+        </html>
+    </template>
+
+    <script>
+        const encryptBtn = document.getElementById('encryptBtn');
+        const fileInput = document.getElementById('fileInput');
+        const passwordInput = document.getElementById('password');
+        const confirmPasswordInput = document.getElementById('confirmPassword');
+        const messageDiv = document.getElementById('message');
+
+        encryptBtn.addEventListener('click', async () => {
+            try {
+                messageDiv.textContent = '';
+
+                if (!fileInput.files.length) {
+                    throw new Error('Please select a file');
+                }
+
+                const password = passwordInput.value;
+                const confirmPassword = confirmPasswordInput.value;
+
+                if (!password) {
+                    throw new Error('Please enter a password');
+                }
+
+                if (password !== confirmPassword) {
+                    throw new Error('Passwords do not match');
+                }
+
+                encryptBtn.disabled = true;
+                messageDiv.textContent = 'Encrypting...';
+                messageDiv.className = '';
+
+                const file = fileInput.files[0];
+                const arrayBuffer = await file.arrayBuffer();
+                const fileData = new Uint8Array(arrayBuffer);
+
+                // Create payload with filename and data
+                const payload = {
+                    filename: file.name,
+                    data: Array.from(fileData)
+                };
+                const payloadJson = JSON.stringify(payload);
+                const payloadBytes = new TextEncoder().encode(payloadJson);
+
+                // Generate salt and IV
+                const salt = crypto.getRandomValues(new Uint8Array(16));
+                const iv = crypto.getRandomValues(new Uint8Array(12));
+
+                // Derive key using PBKDF2
+                const passwordKey = await crypto.subtle.importKey(
+                    'raw',
+                    new TextEncoder().encode(password),
+                    'PBKDF2',
+                    false,
+                    ['deriveBits', 'deriveKey']
+                );
+
+                const aesKey = await crypto.subtle.deriveKey(
+                    {
+                        name: 'PBKDF2',
+                        salt: salt,
+                        iterations: 100000,
+                        hash: 'SHA-256'
+                    },
+                    passwordKey,
+                    { name: 'AES-GCM', length: 256 },
+                    false,
+                    ['encrypt']
+                );
+
+                // Encrypt the payload
+                const encrypted = await crypto.subtle.encrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: iv
+                    },
+                    aesKey,
+                    payloadBytes
+                );
+
+                // Helper function to convert Uint8Array to base64 without stack overflow
+                function uint8ArrayToBase64(bytes) {
+                    let binary = '';
+                    for (let i = 0; i < bytes.length; i++) {
+                        binary += String.fromCharCode(bytes[i]);
+                    }
+                    return btoa(binary);
+                }
+
+                // Create JWE-like structure (simplified)
+                const jwe = {
+                    protected: btoa(JSON.stringify({
+                        alg: 'PBKDF2',
+                        enc: 'A256GCM',
+                        p2s: Array.from(salt),
+                        p2c: 100000
+                    })),
+                    iv: uint8ArrayToBase64(iv),
+                    ciphertext: uint8ArrayToBase64(new Uint8Array(encrypted))
+                };
+
+                // Generate the decryption HTML page
+                const decryptionHtml = generateDecryptionPage(jwe);
+
+                // Download the decryption page
+                const blob = new Blob([decryptionHtml], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'decrypt.html';
+                a.click();
+                URL.revokeObjectURL(url);
+
+                messageDiv.textContent = 'Success! Decryption page downloaded.';
+                messageDiv.className = 'success';
+                encryptBtn.disabled = false;
+
+            } catch (error) {
+                console.error(error);
+                messageDiv.textContent = 'Error: ' + error.message;
+                messageDiv.className = 'error';
+                encryptBtn.disabled = false;
+            }
+        });
+
+        function generateDecryptionPage(jwe) {
+            const template = document.getElementById('decryptionTemplate');
+
+            // Parse the template as a proper HTML document
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(template.innerHTML, 'text/html');
+            let html = doc.documentElement.outerHTML;
+
+            // Replace the placeholder with actual encrypted data
+            html = html.replace('__ENCRYPTED_DATA_PLACEHOLDER__', JSON.stringify(jwe));
+
+            return html;
+        }
+    </script>
+</body>
+</html>
