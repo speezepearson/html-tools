@@ -154,6 +154,9 @@
             font-size: 13px;
             color: #666;
             font-weight: 600;
+            background: rgba(200, 200, 200, 0.25);
+            padding: 2px 4px;
+            border-radius: 3px;
         }
 
         .key-normal {
@@ -161,6 +164,9 @@
             font-size: 18px;
             color: #333;
             font-weight: 700;
+            background: rgba(200, 200, 200, 0.25);
+            padding: 2px 4px;
+            border-radius: 3px;
         }
 
         .key.space {
@@ -247,6 +253,21 @@
             ',': '<', '.': '>', '/': '?', ' ': ' '
         };
 
+        const CODE_TO_KEY = {
+            'Backquote': '`', 'Digit1': '1', 'Digit2': '2', 'Digit3': '3', 'Digit4': '4',
+            'Digit5': '5', 'Digit6': '6', 'Digit7': '7', 'Digit8': '8', 'Digit9': '9',
+            'Digit0': '0', 'Minus': '-', 'Equal': '=',
+            'KeyQ': 'q', 'KeyW': 'w', 'KeyE': 'e', 'KeyR': 'r', 'KeyT': 't',
+            'KeyY': 'y', 'KeyU': 'u', 'KeyI': 'i', 'KeyO': 'o', 'KeyP': 'p',
+            'BracketLeft': '[', 'BracketRight': ']', 'Backslash': '\\',
+            'KeyA': 'a', 'KeyS': 's', 'KeyD': 'd', 'KeyF': 'f', 'KeyG': 'g',
+            'KeyH': 'h', 'KeyJ': 'j', 'KeyK': 'k', 'KeyL': 'l',
+            'Semicolon': ';', 'Quote': "'",
+            'KeyZ': 'z', 'KeyX': 'x', 'KeyC': 'c', 'KeyV': 'v', 'KeyB': 'b',
+            'KeyN': 'n', 'KeyM': 'm', 'Comma': ',', 'Period': '.', 'Slash': '/',
+            'Space': ' '
+        };
+
         let password = '';
         let currentMapping = new Map();
         let reverseMapping = new Map();
@@ -301,8 +322,13 @@
                 const shiftChar = shuffledChars[charIndex++];
 
                 mapping.set(key, { normal: normalChar, shift: shiftChar });
-                reverse.set(normalChar, { key: key, shift: false });
-                reverse.set(shiftChar, { key: key, shift: true });
+
+                if (!reverse.has(normalChar)) {
+                    reverse.set(normalChar, { key: key, shift: false });
+                }
+                if (!reverse.has(shiftChar)) {
+                    reverse.set(shiftChar, { key: key, shift: true });
+                }
             });
 
             return { mapping, reverse };
@@ -342,9 +368,11 @@
                     if (toTypeShift) {
                         if (toTypeShift.key === ' ') {
                             shiftSpan.textContent = '⎵';
+                        } else if (toTypeShift.shift) {
+                            const shiftedKey = SHIFT_MAP[toTypeShift.key] || toTypeShift.key.toUpperCase();
+                            shiftSpan.textContent = shiftedKey;
                         } else {
-                            const displayKey = toTypeShift.key.toUpperCase();
-                            shiftSpan.textContent = toTypeShift.shift ? displayKey : displayKey.toLowerCase();
+                            shiftSpan.textContent = toTypeShift.key;
                         }
                     } else {
                         shiftSpan.textContent = '?';
@@ -355,9 +383,11 @@
                     if (toTypeNormal) {
                         if (toTypeNormal.key === ' ') {
                             normalSpan.textContent = '⎵';
+                        } else if (toTypeNormal.shift) {
+                            const shiftedKey = SHIFT_MAP[toTypeNormal.key] || toTypeNormal.key.toUpperCase();
+                            normalSpan.textContent = shiftedKey;
                         } else {
-                            const displayKey = toTypeNormal.key;
-                            normalSpan.textContent = toTypeNormal.shift ? displayKey.toUpperCase() : displayKey;
+                            normalSpan.textContent = toTypeNormal.key;
                         }
                     } else {
                         normalSpan.textContent = '?';
@@ -405,18 +435,16 @@
                 return;
             }
 
-            let key = event.key;
-            if (key !== ' ') {
-                key = key.toLowerCase();
-            }
-            const mapping = currentMapping.get(key);
-
-            if (mapping) {
-                event.preventDefault();
-                const char = event.shiftKey ? mapping.shift : mapping.normal;
-                password += char;
-                updateDisplay();
-                renderKeyboard();
+            const physicalKey = CODE_TO_KEY[event.code];
+            if (physicalKey) {
+                const mapping = currentMapping.get(physicalKey);
+                if (mapping) {
+                    event.preventDefault();
+                    const char = event.shiftKey ? mapping.shift : mapping.normal;
+                    password += char;
+                    updateDisplay();
+                    renderKeyboard();
+                }
             }
         }
 
