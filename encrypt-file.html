@@ -67,8 +67,25 @@
 <body>
     <div class="container">
         <h1>Encrypt File</h1>
-        <label for="fileInput">Select File:</label>
-        <input type="file" id="fileInput" required>
+
+        <div style="margin-bottom: 20px;">
+            <label style="display: inline; margin-right: 15px;">
+                <input type="radio" name="mode" value="file" checked> File
+            </label>
+            <label style="display: inline;">
+                <input type="radio" name="mode" value="message"> Message
+            </label>
+        </div>
+
+        <div id="fileMode">
+            <label for="fileInput">Select File:</label>
+            <input type="file" id="fileInput">
+        </div>
+
+        <div id="messageMode" style="display: none;">
+            <label for="messageInput">Message:</label>
+            <textarea id="messageInput" rows="6" style="width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-family: inherit;"></textarea>
+        </div>
 
         <label for="password">Password:</label>
         <input type="password" id="password" required>
@@ -154,7 +171,7 @@
                 <p>This page contains an encrypted file. Enter the password to decrypt and download it.</p>
 
                 <label for="password">Password:</label>
-                <input type="password" id="password" required>
+                <input type="password" id="password" required autofocus>
 
                 <button id="decryptBtn">Decrypt & Download</button>
 
@@ -167,6 +184,11 @@
                 const decryptBtn = document.getElementById('decryptBtn');
                 const passwordInput = document.getElementById('password');
                 const messageDiv = document.getElementById('message');
+
+                // Handle Enter key in password field
+                passwordInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') decryptBtn.click();
+                });
 
                 decryptBtn.addEventListener('click', async () => {
                     try {
@@ -233,20 +255,30 @@
                         // Parse payload
                         const payloadJson = new TextDecoder().decode(decrypted);
                         const payload = JSON.parse(payloadJson);
-                        const fileData = new Uint8Array(payload.data);
-                        const filename = payload.filename;
 
-                        // Download the file
-                        const blob = new Blob([fileData]);
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = filename;
-                        a.click();
-                        URL.revokeObjectURL(url);
+                        if (payload.type === 'file') {
+                            // Download the file
+                            const fileData = new Uint8Array(payload.data);
+                            const filename = payload.filename;
 
-                        messageDiv.textContent = 'Success! File decrypted and downloaded: ' + filename;
-                        messageDiv.className = 'success';
+                            const blob = new Blob([fileData]);
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = filename;
+                            a.click();
+                            URL.revokeObjectURL(url);
+
+                            messageDiv.textContent = 'Success! File decrypted and downloaded: ' + filename;
+                            messageDiv.className = 'success';
+                        } else if (payload.type === 'message') {
+                            // Display the message
+                            messageDiv.innerHTML = '<strong>Decrypted message:</strong><br><pre style="white-space: pre-wrap; word-wrap: break-word; background: #f5f5f5; padding: 15px; border-radius: 4px; margin-top: 10px;">' +
+                                payload.message.replace(/</g, '&lt;').replace(/>/g, '&gt;') +
+                                '</pre>';
+                            messageDiv.className = 'success';
+                        }
+
                         decryptBtn.disabled = false;
 
                     } catch (error) {
@@ -264,16 +296,66 @@
     <script>
         const encryptBtn = document.getElementById('encryptBtn');
         const fileInput = document.getElementById('fileInput');
+        const messageInput = document.getElementById('messageInput');
         const passwordInput = document.getElementById('password');
         const confirmPasswordInput = document.getElementById('confirmPassword');
         const messageDiv = document.getElementById('message');
+        const modeRadios = document.querySelectorAll('input[name="mode"]');
+        const fileMode = document.getElementById('fileMode');
+        const messageModeDiv = document.getElementById('messageMode');
+
+        // Handle mode switching
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.value === 'file') {
+                    fileMode.style.display = 'block';
+                    messageModeDiv.style.display = 'none';
+                } else {
+                    fileMode.style.display = 'none';
+                    messageModeDiv.style.display = 'block';
+                }
+            });
+        });
+
+        // Handle Enter key in password fields
+        passwordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') encryptBtn.click();
+        });
+        confirmPasswordInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') encryptBtn.click();
+        });
 
         encryptBtn.addEventListener('click', async () => {
             try {
                 messageDiv.textContent = '';
 
-                if (!fileInput.files.length) {
-                    throw new Error('Please select a file');
+                const mode = document.querySelector('input[name="mode"]:checked').value;
+                let payload;
+
+                if (mode === 'file') {
+                    if (!fileInput.files.length) {
+                        throw new Error('Please select a file');
+                    }
+
+                    const file = fileInput.files[0];
+                    const arrayBuffer = await file.arrayBuffer();
+                    const fileData = new Uint8Array(arrayBuffer);
+
+                    payload = {
+                        type: 'file',
+                        filename: file.name,
+                        data: Array.from(fileData)
+                    };
+                } else {
+                    const message = messageInput.value;
+                    if (!message) {
+                        throw new Error('Please enter a message');
+                    }
+
+                    payload = {
+                        type: 'message',
+                        message: message
+                    };
                 }
 
                 const password = passwordInput.value;
@@ -291,15 +373,6 @@
                 messageDiv.textContent = 'Encrypting...';
                 messageDiv.className = '';
 
-                const file = fileInput.files[0];
-                const arrayBuffer = await file.arrayBuffer();
-                const fileData = new Uint8Array(arrayBuffer);
-
-                // Create payload with filename and data
-                const payload = {
-                    filename: file.name,
-                    data: Array.from(fileData)
-                };
                 const payloadJson = JSON.stringify(payload);
                 const payloadBytes = new TextEncoder().encode(payloadJson);
 
