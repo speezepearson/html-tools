@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rich Text to Markdown Converter</title>
+    <script src="https://unpkg.com/turndown/dist/turndown.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked@17.0.1/lib/marked.umd.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            padding: 30px;
+            max-width: 900px;
+            width: 100%;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .description {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .paste-area {
+            background: #f5f5f5;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 150px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            line-height: 1.6;
+            color: #666;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: text;
+            transition: all 0.2s;
+        }
+
+        .paste-area:hover {
+            border-color: #667eea;
+            background: #fafafa;
+        }
+
+        .paste-area.has-content {
+            text-align: left;
+            display: block;
+        }
+
+        .output-container {
+            display: none;
+            margin-bottom: 20px;
+        }
+
+        .output-container.show {
+            display: block;
+        }
+
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+
+        .output-label {
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+            flex: 1;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .copy-button {
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 16px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .copy-button:hover {
+            background: #5568d3;
+        }
+
+        .copy-button:active {
+            transform: scale(0.98);
+        }
+
+        .copy-button.secondary {
+            background: #52c41a;
+        }
+
+        .copy-button.secondary:hover {
+            background: #45a817;
+        }
+
+        .markdown-output {
+            background: #f5f5f5;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            padding: 20px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            color: #333;
+            white-space: pre-wrap;
+            word-break: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .clear-button {
+            background: #e0e0e0;
+            color: #555;
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.2s;
+            width: 100%;
+        }
+
+        .clear-button:hover {
+            background: #d0d0d0;
+        }
+
+        .status {
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            font-size: 14px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .status.show {
+            opacity: 1;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Rich Text to Markdown Converter</h1>
+        <p class="description">
+            Paste rich text content (from Word, Google Docs, websites, etc.) into the area below.
+            It will be automatically converted to Markdown, preserving links, bold, italics, headings, lists,
+            and other Markdown-compatible formatting while discarding styling like colors and fonts.
+        </p>
+
+        <div id="pasteArea" class="paste-area" contenteditable="true">
+            Click here and paste your rich text (Cmd+V or Ctrl+V)
+        </div>
+
+        <div id="outputContainer" class="output-container">
+            <div class="output-header">
+                <span class="output-label">Markdown Output</span>
+                <div class="button-group">
+                    <button id="copyButton" class="copy-button">Copy as Markdown</button>
+                    <button id="copyRichButton" class="copy-button secondary">Copy as Rich Text</button>
+                </div>
+            </div>
+            <div id="markdownOutput" class="markdown-output"></div>
+        </div>
+
+        <button id="clearButton" class="clear-button" style="display: none;">Clear and Start Over</button>
+
+        <div id="status" class="status"></div>
+    </div>
+
+    <script>
+        const pasteArea = document.getElementById('pasteArea');
+        const outputContainer = document.getElementById('outputContainer');
+        const markdownOutput = document.getElementById('markdownOutput');
+        const copyButton = document.getElementById('copyButton');
+        const copyRichButton = document.getElementById('copyRichButton');
+        const clearButton = document.getElementById('clearButton');
+        const status = document.getElementById('status');
+
+        const turndownService = new TurndownService({
+            headingStyle: 'atx',
+            codeBlockStyle: 'fenced',
+            bulletListMarker: '-',
+            emDelimiter: '*',
+            strongDelimiter: '**'
+        });
+
+        let currentMarkdown = '';
+
+        pasteArea.addEventListener('paste', (event) => {
+            event.preventDefault();
+
+            // Get HTML content from clipboard
+            const html = event.clipboardData.getData('text/html');
+            const plainText = event.clipboardData.getData('text/plain');
+
+            // If there's HTML, convert it to Markdown
+            if (html) {
+                currentMarkdown = turndownService.turndown(html);
+            } else if (plainText) {
+                // If only plain text is available, use it as-is
+                currentMarkdown = plainText;
+            } else {
+                showStatus('No content detected in clipboard', 'error');
+                return;
+            }
+
+            // Update the UI
+            pasteArea.textContent = 'Rich text pasted successfully';
+            pasteArea.classList.add('has-content');
+            markdownOutput.textContent = currentMarkdown;
+            outputContainer.classList.add('show');
+            clearButton.style.display = 'block';
+
+            // Automatically copy to clipboard
+            // If URL has #rich fragment, copy as rich text; otherwise copy as plain Markdown
+            if (window.location.hash === '#rich') {
+                copyAsRichText();
+            } else {
+                navigator.clipboard.writeText(currentMarkdown).then(() => {
+                    showStatus('Converted to Markdown and copied to clipboard!', 'success');
+                }).catch(err => {
+                    showStatus('Converted to Markdown (failed to auto-copy)', 'error');
+                    console.error('Clipboard error:', err);
+                });
+            }
+        });
+
+        copyButton.addEventListener('click', () => {
+            navigator.clipboard.writeText(currentMarkdown).then(() => {
+                showStatus('Markdown copied to clipboard!', 'success');
+            }).catch(err => {
+                showStatus('Failed to copy to clipboard', 'error');
+                console.error('Clipboard error:', err);
+            });
+        });
+
+        async function copyAsRichText() {
+            try {
+                // Convert Markdown to HTML
+                const html = marked.parse(currentMarkdown);
+
+                // Create a ClipboardItem with both HTML and plain text
+                const blob = new Blob([html], { type: 'text/html' });
+                const textBlob = new Blob([currentMarkdown], { type: 'text/plain' });
+
+                const clipboardItem = new ClipboardItem({
+                    'text/html': blob,
+                    'text/plain': textBlob
+                });
+
+                await navigator.clipboard.write([clipboardItem]);
+                showStatus('Rich text copied to clipboard!', 'success');
+            } catch (err) {
+                showStatus('Failed to copy rich text', 'error');
+                console.error('Clipboard error:', err);
+            }
+        }
+
+        copyRichButton.addEventListener('click', copyAsRichText);
+
+        clearButton.addEventListener('click', () => {
+            pasteArea.textContent = 'Click here and paste your rich text (Cmd+V or Ctrl+V)';
+            pasteArea.classList.remove('has-content');
+            markdownOutput.textContent = '';
+            outputContainer.classList.remove('show');
+            clearButton.style.display = 'none';
+            currentMarkdown = '';
+        });
+
+        // Focus the paste area on click
+        pasteArea.addEventListener('click', () => {
+            pasteArea.focus();
+        });
+
+        function showStatus(message, type) {
+            status.textContent = message;
+            status.className = `status ${type} show`;
+            setTimeout(() => {
+                status.classList.remove('show');
+            }, 3000);
+        }
+
+        // Autofocus the paste area on page load
+        pasteArea.focus();
+    </script>
+</body>
+</html>
