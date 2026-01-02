@@ -285,6 +285,29 @@
             font-size: 12px;
             margin-left: 10px;
         }
+        .recipe-name-cell {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .recipe-name-cell input {
+            flex: 1;
+            padding: 4px 8px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        .recipe-name-cell .name-text {
+            flex: 1;
+        }
+        .recipe-name-cell button.edit-btn {
+            padding: 2px 6px;
+            font-size: 11px;
+            background: #6c757d;
+        }
+        .recipe-name-cell button.edit-btn:hover {
+            background: #545b62;
+        }
     </style>
 </head>
 <body>
@@ -390,6 +413,26 @@
         let constraints = [];
         let mealCounts = { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
         let isDirty = false;
+        let nextRecipeId = 1;
+
+        function generateRecipeId() {
+            return 'r' + (nextRecipeId++);
+        }
+
+        function ensureRecipeIds(recipeList) {
+            // Assign IDs to any recipes that don't have them (for backwards compatibility)
+            return recipeList.map(r => {
+                if (!r.id) {
+                    return { ...r, id: generateRecipeId() };
+                }
+                // Track highest ID to avoid collisions
+                const match = r.id.match(/^r(\d+)$/);
+                if (match) {
+                    nextRecipeId = Math.max(nextRecipeId, parseInt(match[1]) + 1);
+                }
+                return r;
+            });
+        }
 
         function markDirty() {
             isDirty = true;
@@ -416,7 +459,7 @@
                 const data = JSON.parse(embeddedEl.textContent);
                 if (data && Object.keys(data).length > 0) {
                     tags = data.tags || [];
-                    recipes = data.recipes || [];
+                    recipes = ensureRecipeIds(data.recipes || []);
                     constraints = data.constraints || [];
                     mealCounts = data.mealCounts || { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
                 }
@@ -471,21 +514,30 @@
             const input = document.getElementById('recipeInput');
             const recipeName = input.value.trim();
             if (recipeName && !recipes.find(r => r.name === recipeName)) {
-                recipes.push({ name: recipeName, tags: [] });
+                recipes.push({ id: generateRecipeId(), name: recipeName, tags: [] });
                 input.value = '';
                 saveData();
                 renderAll();
             }
         }
 
-        function removeRecipe(recipeName) {
-            recipes = recipes.filter(r => r.name !== recipeName);
+        function removeRecipe(recipeId) {
+            recipes = recipes.filter(r => r.id !== recipeId);
             saveData();
             renderAll();
         }
 
-        function toggleTag(recipeName, tag) {
-            const recipe = recipes.find(r => r.name === recipeName);
+        function renameRecipe(recipeId, newName) {
+            const recipe = recipes.find(r => r.id === recipeId);
+            if (recipe && newName.trim()) {
+                recipe.name = newName.trim();
+                saveData();
+                renderAll();
+            }
+        }
+
+        function toggleTag(recipeId, tag) {
+            const recipe = recipes.find(r => r.id === recipeId);
             if (recipe) {
                 if (recipe.tags.includes(tag)) {
                     recipe.tags = recipe.tags.filter(t => t !== tag);
@@ -564,17 +616,30 @@
             html += '<th></th></tr></thead><tbody>';
 
             recipes.forEach(recipe => {
-                html += `<tr><td class="recipe-name">${escapeHtml(recipe.name)}</td>`;
+                html += `<tr><td class="recipe-name"><div class="recipe-name-cell">`;
+                html += `<span class="name-text">${escapeHtml(recipe.name)}</span>`;
+                html += `<button class="edit-btn" onclick="startRename('${escapeJs(recipe.id)}')">Edit</button>`;
+                html += `</div></td>`;
                 tags.forEach(tag => {
                     const checked = recipe.tags.includes(tag) ? 'checked' : '';
-                    html += `<td><input type="checkbox" ${checked} onchange="toggleTag('${escapeJs(recipe.name)}', '${escapeJs(tag)}')"></td>`;
+                    html += `<td><input type="checkbox" ${checked} onchange="toggleTag('${escapeJs(recipe.id)}', '${escapeJs(tag)}')"></td>`;
                 });
-                html += `<td><button class="danger" onclick="removeRecipe('${escapeJs(recipe.name)}')">Remove</button></td>`;
+                html += `<td><button class="danger" onclick="removeRecipe('${escapeJs(recipe.id)}')">Remove</button></td>`;
                 html += '</tr>';
             });
 
             html += '</tbody></table>';
             container.innerHTML = html;
+        }
+
+        function startRename(recipeId) {
+            const recipe = recipes.find(r => r.id === recipeId);
+            if (!recipe) return;
+
+            const newName = prompt('Enter new name for recipe:', recipe.name);
+            if (newName !== null && newName.trim() !== '') {
+                renameRecipe(recipeId, newName);
+            }
         }
 
         function renderAll() {
@@ -617,12 +682,19 @@
             ];
 
             let allWarnings = [];
+            let usedRecipeIds = new Set(); // Track recipes used across all categories
 
             categories.forEach(cat => {
                 if (cat.count === 0) return;
 
-                const available = recipes.filter(r => r.tags.includes(cat.name));
+                // Filter out recipes already used in other categories
+                const available = recipes.filter(r =>
+                    r.tags.includes(cat.name) && !usedRecipeIds.has(r.id)
+                );
                 const result = selectWithConstraints(available, cat.count, cat.name);
+
+                // Add selected recipes to used set
+                result.selected.forEach(r => usedRecipeIds.add(r.id));
 
                 if (result.warnings.length > 0) {
                     allWarnings = allWarnings.concat(result.warnings.map(w => `${cat.label}: ${w}`));
@@ -734,7 +806,7 @@
             // Update embedded data element with current data
             const dataToEmbed = {
                 tags: [...tags],
-                recipes: recipes.map(r => ({ name: r.name, tags: [...r.tags] })),
+                recipes: recipes.map(r => ({ id: r.id, name: r.name, tags: [...r.tags] })),
                 constraints: [...constraints],
                 mealCounts: { ...mealCounts }
             };
@@ -785,7 +857,7 @@
             readMealCounts();
             return {
                 tags: [...tags],
-                recipes: recipes.map(r => ({ name: r.name, tags: [...r.tags] })),
+                recipes: recipes.map(r => ({ id: r.id, name: r.name, tags: [...r.tags] })),
                 constraints: [...constraints],
                 mealCounts: { ...mealCounts }
             };
@@ -801,12 +873,14 @@
             if (data.recipes && !Array.isArray(data.recipes)) throw new Error('recipes must be an array');
             if (data.constraints && !Array.isArray(data.constraints)) throw new Error('constraints must be an array');
 
-            // Apply data
+            // Apply data (ensureRecipeIds handles legacy data without IDs)
             tags = data.tags || [];
-            recipes = (data.recipes || []).map(r => ({
+            const rawRecipes = (data.recipes || []).map(r => ({
+                id: r.id, // May be undefined for legacy data
                 name: r.name || '',
                 tags: Array.isArray(r.tags) ? r.tags : []
             }));
+            recipes = ensureRecipeIds(rawRecipes);
             constraints = (data.constraints || []).map(c => ({
                 type: c.type || 'atLeast',
                 count: parseInt(c.count) || 0,
