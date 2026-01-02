@@ -412,22 +412,13 @@
             }
         });
 
-        // Load data from embedded data or localStorage
+        // Load data from embedded data
         function loadData() {
             if (EMBEDDED_DATA) {
                 tags = EMBEDDED_DATA.tags || [];
                 recipes = EMBEDDED_DATA.recipes || [];
                 constraints = EMBEDDED_DATA.constraints || [];
                 mealCounts = EMBEDDED_DATA.mealCounts || { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
-            } else {
-                const saved = localStorage.getItem('recipeTagData');
-                if (saved) {
-                    const data = JSON.parse(saved);
-                    tags = data.tags || [];
-                    recipes = data.recipes || [];
-                    constraints = data.constraints || [];
-                    mealCounts = data.mealCounts || { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
-                }
             }
 
             // Apply meal counts to inputs
@@ -441,7 +432,6 @@
 
         function saveData() {
             readMealCounts();
-            localStorage.setItem('recipeTagData', JSON.stringify({ tags, recipes, constraints, mealCounts }));
             markDirty();
         }
 
