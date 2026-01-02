@@ -236,6 +236,55 @@
             border-radius: 8px;
             text-align: center;
         }
+        details {
+            margin-top: 15px;
+            text-align: left;
+        }
+        details summary {
+            cursor: pointer;
+            color: #155724;
+            font-weight: 500;
+        }
+        details[open] summary {
+            margin-bottom: 15px;
+        }
+        .import-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 10px;
+        }
+        .import-section h4 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .import-section textarea {
+            width: 100%;
+            height: 100px;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+        .import-section input[type="file"] {
+            margin-bottom: 10px;
+        }
+        .import-message {
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .dirty-indicator {
+            display: inline-block;
+            background: #ffc107;
+            color: #333;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
@@ -306,12 +355,31 @@
     </div>
 
     <div class="container download-section">
-        <h2>Save a Copy</h2>
+        <h2>Save a Copy <span id="dirtyIndicator" class="dirty-indicator" style="display: none;">Unsaved changes</span></h2>
         <p>Download a copy of this page with all your current recipes, tags, and settings embedded.</p>
         <button class="success" onclick="downloadCopy()" style="font-size: 16px; padding: 12px 24px;">
             Download Copy
         </button>
         <div id="downloadMessage" style="margin-top: 10px;"></div>
+
+        <details>
+            <summary>Import data from another copy</summary>
+            <div class="import-section">
+                <h4>Import from file</h4>
+                <p class="info-text">Select another copy of this recipe planner to import its data.</p>
+                <input type="file" id="importFile" accept=".html">
+                <button onclick="importFromFile()">Import from File</button>
+                <div id="importFileMessage" class="import-message"></div>
+            </div>
+            <div class="import-section">
+                <h4>Import from JSON</h4>
+                <p class="info-text">Paste exported JSON data below.</p>
+                <textarea id="importJson" placeholder='{"tags": [...], "recipes": [...], ...}'></textarea>
+                <button onclick="importFromJson()">Import JSON</button>
+                <button class="secondary" onclick="exportJson()">Export Current Data as JSON</button>
+                <div id="importJsonMessage" class="import-message"></div>
+            </div>
+        </details>
     </div>
 
     <script id="embeddedData">
@@ -324,6 +392,25 @@
         let recipes = [];
         let constraints = [];
         let mealCounts = { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
+        let isDirty = false;
+
+        function markDirty() {
+            isDirty = true;
+            document.getElementById('dirtyIndicator').style.display = 'inline-block';
+        }
+
+        function markClean() {
+            isDirty = false;
+            document.getElementById('dirtyIndicator').style.display = 'none';
+        }
+
+        // Warn before leaving with unsaved changes
+        window.addEventListener('beforeunload', (e) => {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
 
         // Load data from embedded data or localStorage
         function loadData() {
@@ -355,6 +442,7 @@
         function saveData() {
             readMealCounts();
             localStorage.setItem('recipeTagData', JSON.stringify({ tags, recipes, constraints, mealCounts }));
+            markDirty();
         }
 
         function readMealCounts() {
@@ -682,6 +770,129 @@
             URL.revokeObjectURL(url);
 
             messageDiv.innerHTML = '<span style="color: #155724;">Copy downloaded!</span>';
+            markClean();
+        }
+
+        function getCurrentData() {
+            readMealCounts();
+            return {
+                tags: [...tags],
+                recipes: recipes.map(r => ({ name: r.name, tags: [...r.tags] })),
+                constraints: [...constraints],
+                mealCounts: { ...mealCounts }
+            };
+        }
+
+        function applyImportedData(data) {
+            if (!data || typeof data !== 'object') {
+                throw new Error('Invalid data format');
+            }
+
+            // Validate structure
+            if (data.tags && !Array.isArray(data.tags)) throw new Error('tags must be an array');
+            if (data.recipes && !Array.isArray(data.recipes)) throw new Error('recipes must be an array');
+            if (data.constraints && !Array.isArray(data.constraints)) throw new Error('constraints must be an array');
+
+            // Apply data
+            tags = data.tags || [];
+            recipes = (data.recipes || []).map(r => ({
+                name: r.name || '',
+                tags: Array.isArray(r.tags) ? r.tags : []
+            }));
+            constraints = (data.constraints || []).map(c => ({
+                type: c.type || 'atLeast',
+                count: parseInt(c.count) || 0,
+                tag: c.tag || ''
+            }));
+            mealCounts = {
+                breakfast: parseInt(data.mealCounts?.breakfast) || 3,
+                lunch: parseInt(data.mealCounts?.lunch) || 3,
+                dinner: parseInt(data.mealCounts?.dinner) || 3,
+                snack: parseInt(data.mealCounts?.snack) || 3
+            };
+
+            // Update UI
+            document.getElementById('countBreakfast').value = mealCounts.breakfast;
+            document.getElementById('countLunch').value = mealCounts.lunch;
+            document.getElementById('countDinner').value = mealCounts.dinner;
+            document.getElementById('countSnack').value = mealCounts.snack;
+
+            saveData();
+            renderAll();
+        }
+
+        function importFromFile() {
+            const fileInput = document.getElementById('importFile');
+            const messageDiv = document.getElementById('importFileMessage');
+            messageDiv.innerHTML = '';
+
+            if (!fileInput.files.length) {
+                messageDiv.innerHTML = '<span style="color: #dc3545;">Please select a file first.</span>';
+                return;
+            }
+
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+
+            reader.onload = (e) => {
+                try {
+                    const html = e.target.result;
+
+                    // Look for embedded data in the HTML
+                    const match = html.match(/const EMBEDDED_DATA = ({[\s\S]*?});/);
+                    if (!match) {
+                        // Try to find data in localStorage format (null embedded data)
+                        const nullMatch = html.match(/const EMBEDDED_DATA = null;/);
+                        if (nullMatch) {
+                            messageDiv.innerHTML = '<span style="color: #856404;">This file has no embedded data (it uses localStorage). Try exporting JSON from that file instead.</span>';
+                            return;
+                        }
+                        throw new Error('Could not find embedded data in file');
+                    }
+
+                    const data = JSON.parse(match[1]);
+                    applyImportedData(data);
+                    messageDiv.innerHTML = `<span style="color: #155724;">Imported ${recipes.length} recipes and ${tags.length} tags!</span>`;
+                    fileInput.value = '';
+                } catch (err) {
+                    messageDiv.innerHTML = `<span style="color: #dc3545;">Error: ${err.message}</span>`;
+                }
+            };
+
+            reader.onerror = () => {
+                messageDiv.innerHTML = '<span style="color: #dc3545;">Error reading file.</span>';
+            };
+
+            reader.readAsText(file);
+        }
+
+        function importFromJson() {
+            const textarea = document.getElementById('importJson');
+            const messageDiv = document.getElementById('importJsonMessage');
+            messageDiv.innerHTML = '';
+
+            const jsonText = textarea.value.trim();
+            if (!jsonText) {
+                messageDiv.innerHTML = '<span style="color: #dc3545;">Please paste JSON data first.</span>';
+                return;
+            }
+
+            try {
+                const data = JSON.parse(jsonText);
+                applyImportedData(data);
+                messageDiv.innerHTML = `<span style="color: #155724;">Imported ${recipes.length} recipes and ${tags.length} tags!</span>`;
+                textarea.value = '';
+            } catch (err) {
+                messageDiv.innerHTML = `<span style="color: #dc3545;">Error: ${err.message}</span>`;
+            }
+        }
+
+        function exportJson() {
+            const data = getCurrentData();
+            const json = JSON.stringify(data, null, 2);
+            const textarea = document.getElementById('importJson');
+            textarea.value = json;
+            document.getElementById('importJsonMessage').innerHTML = '<span style="color: #155724;">Current data exported to text box above. Copy it to save.</span>';
         }
 
         // Handle Enter key
