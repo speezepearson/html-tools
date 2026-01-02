@@ -5,7 +5,7 @@ def main():
   relnames = [path.name for path in here.glob("*.html") if path.name not in ("index.html", "index-template.html")]
 
   li_elements = []
-  for relname in relnames:
+  for relname in sorted(relnames):
     # Generate icon filename (e.g., "antisniff.html" -> "antisniff-icon.png")
     icon_name = relname.replace(".html", "-icon.png")
     li_elements.append(
