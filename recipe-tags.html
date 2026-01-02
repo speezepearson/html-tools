@@ -743,6 +743,30 @@
             // Get current HTML (now includes the updated embedded data)
             let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 
+            // Verify the embedded data is present and correct in the generated HTML
+            try {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const embeddedEl = doc.getElementById('embeddedData');
+
+                if (!embeddedEl) {
+                    throw new Error('Embedded data element missing from generated HTML');
+                }
+
+                const parsedData = JSON.parse(embeddedEl.textContent);
+
+                // Verify key data matches what we intended to embed
+                if (parsedData.tags?.length !== dataToEmbed.tags.length) {
+                    throw new Error('Tag count mismatch in generated HTML');
+                }
+                if (parsedData.recipes?.length !== dataToEmbed.recipes.length) {
+                    throw new Error('Recipe count mismatch in generated HTML');
+                }
+            } catch (err) {
+                messageDiv.innerHTML = `<span style="color: #dc3545;">Error: Failed to save - ${err.message}. Please report this bug.</span>`;
+                return;
+            }
+
             // Download
             const blob = new Blob([html], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
