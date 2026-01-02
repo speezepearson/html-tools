@@ -382,10 +382,7 @@
         </details>
     </div>
 
-    <script id="embeddedData">
-        // This will be replaced with actual data when saving a copy
-        const EMBEDDED_DATA = null;
-    </script>
+    <script type="application/json" id="embeddedData">{}</script>
 
     <script>
         let tags = [];
@@ -412,13 +409,19 @@
             }
         });
 
-        // Load data from embedded data
+        // Load data from embedded JSON element
         function loadData() {
-            if (EMBEDDED_DATA) {
-                tags = EMBEDDED_DATA.tags || [];
-                recipes = EMBEDDED_DATA.recipes || [];
-                constraints = EMBEDDED_DATA.constraints || [];
-                mealCounts = EMBEDDED_DATA.mealCounts || { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
+            try {
+                const embeddedEl = document.getElementById('embeddedData');
+                const data = JSON.parse(embeddedEl.textContent);
+                if (data && Object.keys(data).length > 0) {
+                    tags = data.tags || [];
+                    recipes = data.recipes || [];
+                    constraints = data.constraints || [];
+                    mealCounts = data.mealCounts || { breakfast: 3, lunch: 3, dinner: 3, snack: 3 };
+                }
+            } catch (e) {
+                // No embedded data or invalid JSON, start fresh
             }
 
             // Apply meal counts to inputs
@@ -728,26 +731,17 @@
             readMealCounts();
             const messageDiv = document.getElementById('downloadMessage');
 
-            // Get current HTML
-            let html = document.documentElement.outerHTML;
-
-            // Prepare embedded data
+            // Update embedded data element with current data
             const dataToEmbed = {
                 tags: [...tags],
                 recipes: recipes.map(r => ({ name: r.name, tags: [...r.tags] })),
                 constraints: [...constraints],
                 mealCounts: { ...mealCounts }
             };
+            document.getElementById('embeddedData').textContent = JSON.stringify(dataToEmbed);
 
-            // Replace the embedded data script
-            const dataScript = `const EMBEDDED_DATA = ${JSON.stringify(dataToEmbed)};`;
-            html = html.replace(
-                /const EMBEDDED_DATA = null;/,
-                dataScript
-            );
-
-            // Add doctype
-            html = '<!DOCTYPE html>\n' + html;
+            // Get current HTML (now includes the updated embedded data)
+            let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
 
             // Download
             const blob = new Blob([html], { type: 'text/html' });
@@ -828,19 +822,20 @@
                 try {
                     const html = e.target.result;
 
-                    // Look for embedded data in the HTML
-                    const match = html.match(/const EMBEDDED_DATA = ({[\s\S]*?});/);
-                    if (!match) {
-                        // Try to find data in localStorage format (null embedded data)
-                        const nullMatch = html.match(/const EMBEDDED_DATA = null;/);
-                        if (nullMatch) {
-                            messageDiv.innerHTML = '<span style="color: #856404;">This file has no embedded data (it uses localStorage). Try exporting JSON from that file instead.</span>';
-                            return;
-                        }
-                        throw new Error('Could not find embedded data in file');
+                    // Parse HTML and find the embedded data element
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const embeddedEl = doc.getElementById('embeddedData');
+
+                    if (!embeddedEl) {
+                        throw new Error('Could not find embedded data element in file');
                     }
 
-                    const data = JSON.parse(match[1]);
+                    const data = JSON.parse(embeddedEl.textContent);
+                    if (!data || Object.keys(data).length === 0) {
+                        throw new Error('File contains no data');
+                    }
+
                     applyImportedData(data);
                     messageDiv.innerHTML = `<span style="color: #155724;">Imported ${recipes.length} recipes and ${tags.length} tags!</span>`;
                     fileInput.value = '';
