@@ -231,6 +231,10 @@
     <script type="application/json" id="encryptedData">null</script>
 
     <script>
+        // Capture clean HTML template IMMEDIATELY before any user interaction
+        // This is critical for security - we must never serialize the live DOM
+        const CLEAN_HTML_TEMPLATE = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
         // State
         let sites = []; // Array of { name: string, salt: string }
         let masterKey = null; // The derived key from master password (kept in memory)
@@ -571,20 +575,49 @@
 
                 // Encrypt the current sites data
                 const encrypted = await encrypt(sites, masterPassword);
+                const encryptedJson = JSON.stringify(encrypted);
 
-                // Update the embedded data element
-                document.getElementById('encryptedData').textContent = JSON.stringify(encrypted);
-
-                // Generate HTML
-                let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
-
-                // Verify the embedded data is present
+                // SECURITY: Use the clean template captured at page load, NOT the live DOM
+                // This prevents any decrypted data from leaking into the saved file
                 const parser = new DOMParser();
-                const doc = parser.parseFromString(html, 'text/html');
-                const embeddedEl = doc.getElementById('encryptedData');
+                const doc = parser.parseFromString(CLEAN_HTML_TEMPLATE, 'text/html');
 
-                if (!embeddedEl || embeddedEl.textContent === 'null') {
-                    throw new Error('Embedded data missing from generated HTML');
+                // Inject the encrypted data into the clean template
+                const embeddedEl = doc.getElementById('encryptedData');
+                if (!embeddedEl) {
+                    throw new Error('Embedded data element missing from template');
+                }
+                embeddedEl.textContent = encryptedJson;
+
+                // Generate the final HTML
+                const html = '<!DOCTYPE html>\n' + doc.documentElement.outerHTML;
+
+                // SECURITY: Verify no decrypted data leaked into the output
+                for (const site of sites) {
+                    // Check that site names and salts don't appear in plaintext
+                    // (they should only exist in encrypted form)
+                    // Skip very short names that might match innocuously
+                    if (site.name.length > 3 && html.includes(site.name)) {
+                        // Check if it's just in the encrypted blob (which is fine)
+                        const htmlWithoutEncrypted = html.replace(encryptedJson, '');
+                        if (htmlWithoutEncrypted.includes(site.name)) {
+                            throw new Error('Security check failed: site name found in output');
+                        }
+                    }
+                    if (site.salt.length > 3 && site.salt !== site.name && html.includes(site.salt)) {
+                        const htmlWithoutEncrypted = html.replace(encryptedJson, '');
+                        if (htmlWithoutEncrypted.includes(site.salt)) {
+                            throw new Error('Security check failed: salt found in output');
+                        }
+                    }
+                }
+
+                // Verify the page is in locked state (check for expected locked UI)
+                if (html.includes('class="unlocked-state active"')) {
+                    throw new Error('Security check failed: output shows unlocked state');
+                }
+                if (html.includes('class="password-display visible"')) {
+                    throw new Error('Security check failed: output contains visible passwords');
                 }
 
                 // Download
