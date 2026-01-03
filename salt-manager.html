@@ -479,29 +479,29 @@
             renderSites();
         }
 
-        function removeSite(name) {
-            sites = sites.filter(s => s.name !== name);
+        function removeSite(index) {
+            sites.splice(index, 1);
             markDirty();
             renderSites();
         }
 
-        function editSalt(name) {
-            const site = sites.find(s => s.name === name);
+        function editSalt(index) {
+            const site = sites[index];
             if (!site) return;
 
-            const newSalt = prompt('Enter new salt for ' + name + ':', site.salt);
+            const newSalt = prompt('Enter new salt for ' + site.name + ':', site.salt);
             if (newSalt !== null) {
-                site.salt = newSalt || name;
+                site.salt = newSalt || site.name;
                 markDirty();
                 renderSites();
             }
         }
 
-        async function showPassword(name) {
-            const site = sites.find(s => s.name === name);
+        async function showPassword(index) {
+            const site = sites[index];
             if (!site || !masterPassword) return;
 
-            const displayEl = document.getElementById('pw-' + CSS.escape(name));
+            const displayEl = document.getElementById('pw-' + index);
             if (!displayEl) return;
 
             if (displayEl.classList.contains('visible')) {
@@ -538,16 +538,16 @@
                 return;
             }
 
-            container.innerHTML = sites.map(site => `
+            container.innerHTML = sites.map((site, index) => `
                 <div class="site-item">
                     <span class="site-name">${escapeHtml(site.name)}</span>
                     <span class="site-salt">salt: ${escapeHtml(site.salt)}</span>
                     <div class="site-actions">
-                        <button onclick="showPassword('${escapeHtml(site.name)}')">Get Password</button>
-                        <button class="secondary" onclick="editSalt('${escapeHtml(site.name)}')">Edit Salt</button>
-                        <button class="danger" onclick="removeSite('${escapeHtml(site.name)}')">Remove</button>
+                        <button onclick="showPassword(${index})">Get Password</button>
+                        <button class="secondary" onclick="editSalt(${index})">Edit Salt</button>
+                        <button class="danger" onclick="removeSite(${index})">Remove</button>
                     </div>
-                    <div class="password-display" id="pw-${escapeHtml(site.name)}"></div>
+                    <div class="password-display" id="pw-${index}"></div>
                 </div>
             `).join('');
         }
