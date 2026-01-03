@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salt Manager</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1, h2, h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .input-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        input[type="text"],
+        input[type="password"] {
+            flex: 1;
+            min-width: 200px;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            padding: 8px 16px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #545b62;
+        }
+        button.success {
+            background: #28a745;
+        }
+        button.success:hover {
+            background: #218838;
+        }
+        button.danger {
+            background: #dc3545;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        .site-list {
+            margin-top: 20px;
+        }
+        .site-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            flex-wrap: wrap;
+        }
+        .site-name {
+            font-weight: 500;
+            min-width: 150px;
+        }
+        .site-salt {
+            color: #6c757d;
+            font-family: monospace;
+            font-size: 13px;
+            flex: 1;
+        }
+        .site-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .password-display {
+            font-family: monospace;
+            background: #e9ecef;
+            padding: 8px 12px;
+            border-radius: 4px;
+            margin-top: 8px;
+            word-break: break-all;
+            display: none;
+        }
+        .password-display.visible {
+            display: block;
+        }
+        .locked-state, .unlocked-state {
+            display: none;
+        }
+        .locked-state.active, .unlocked-state.active {
+            display: block;
+        }
+        .status-bar {
+            background: #d4edda;
+            color: #155724;
+            padding: 10px 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-bar.locked {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .status-bar.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+        }
+        .success {
+            color: #28a745;
+            margin-top: 10px;
+        }
+        .info-text {
+            color: #6c757d;
+            font-size: 13px;
+            margin-top: 5px;
+        }
+        .download-section {
+            margin-top: 20px;
+            padding: 20px;
+            background: #d4edda;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .dirty-indicator {
+            display: inline-block;
+            background: #ffc107;
+            color: #333;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+        .empty-state {
+            color: #6c757d;
+            font-style: italic;
+            padding: 20px;
+            text-align: center;
+        }
+        .password-section {
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Salt Manager</h1>
+        <p>Manage site-specific salts for password derivation. Your data is encrypted with your master password.</p>
+
+        <div id="statusBar" class="status-bar locked">
+            <span id="statusText">Locked</span>
+            <span id="timerText"></span>
+        </div>
+
+        <div id="lockedState" class="locked-state active">
+            <div class="password-section">
+                <label for="masterPassword"><strong>Master Password:</strong></label>
+                <div class="input-row">
+                    <input type="password" id="masterPassword" placeholder="Enter master password">
+                    <button onclick="unlock()">Unlock</button>
+                </div>
+                <div id="unlockError" class="error"></div>
+            </div>
+        </div>
+
+        <div id="unlockedState" class="unlocked-state">
+            <div style="margin-bottom: 20px;">
+                <button class="secondary" onclick="lock()">Lock Now</button>
+            </div>
+
+            <h3>Sites</h3>
+            <div class="input-row">
+                <input type="text" id="siteInput" placeholder="Enter site name (e.g., github.com)">
+                <input type="text" id="saltInput" placeholder="Custom salt (optional, defaults to site name)">
+                <button onclick="addSite()">Add Site</button>
+            </div>
+            <p class="info-text">The salt defaults to the site name if not specified.</p>
+
+            <div class="site-list" id="siteList">
+                <div class="empty-state">No sites added yet</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container download-section" id="downloadSection" style="display: none;">
+        <h2>Save a Copy <span id="dirtyIndicator" class="dirty-indicator" style="display: none;">Unsaved changes</span></h2>
+        <p>Download a copy of this page with your encrypted site data.</p>
+        <div class="input-row" style="justify-content: center;">
+            <input type="password" id="savePassword" placeholder="Confirm master password" style="max-width: 300px;">
+            <button class="success" onclick="downloadCopy()">Download Copy</button>
+        </div>
+        <div id="downloadMessage" style="margin-top: 10px;"></div>
+    </div>
+
+    <script type="application/json" id="encryptedData">null</script>
+
+    <script>
+        // State
+        let sites = []; // Array of { name: string, salt: string }
+        let masterKey = null; // The derived key from master password (kept in memory)
+        let masterPassword = null; // The master password (kept in memory for re-encryption)
+        let isUnlocked = false;
+        let isDirty = false;
+        let blurTime = null;
+        let lockTimeout = null;
+        const LOCK_AFTER_MS = 5 * 60 * 1000; // 5 minutes
+
+        // Crypto helpers
+        function base64ToUint8Array(base64) {
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+            return bytes;
+        }
+
+        function uint8ArrayToBase64(bytes) {
+            let binary = '';
+            for (let i = 0; i < bytes.length; i++) {
+                binary += String.fromCharCode(bytes[i]);
+            }
+            return btoa(binary);
+        }
+
+        async function deriveKey(password, salt, iterations = 100000) {
+            const passwordKey = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+
+            return await crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: iterations,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                { name: 'AES-GCM', length: 256 },
+                false,
+                ['encrypt', 'decrypt']
+            );
+        }
+
+        async function encrypt(data, password) {
+            const salt = crypto.getRandomValues(new Uint8Array(16));
+            const iv = crypto.getRandomValues(new Uint8Array(12));
+            const key = await deriveKey(password, salt);
+
+            const payloadBytes = new TextEncoder().encode(JSON.stringify(data));
+            const encrypted = await crypto.subtle.encrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                payloadBytes
+            );
+
+            return {
+                protected: btoa(JSON.stringify({
+                    alg: 'PBKDF2',
+                    enc: 'A256GCM',
+                    p2s: Array.from(salt),
+                    p2c: 100000
+                })),
+                iv: uint8ArrayToBase64(iv),
+                ciphertext: uint8ArrayToBase64(new Uint8Array(encrypted))
+            };
+        }
+
+        async function decrypt(encryptedData, password) {
+            const header = JSON.parse(atob(encryptedData.protected));
+            const salt = new Uint8Array(header.p2s);
+            const iterations = header.p2c;
+            const iv = base64ToUint8Array(encryptedData.iv);
+            const ciphertext = base64ToUint8Array(encryptedData.ciphertext);
+
+            const key = await deriveKey(password, salt, iterations);
+
+            const decrypted = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: iv },
+                key,
+                ciphertext
+            );
+
+            return JSON.parse(new TextDecoder().decode(decrypted));
+        }
+
+        // Password derivation (matching the Python implementation)
+        async function derivePassword(master, salt) {
+            // Import master password
+            const passwordKey = await crypto.subtle.importKey(
+                'raw',
+                new TextEncoder().encode(master),
+                'PBKDF2',
+                false,
+                ['deriveBits']
+            );
+
+            // PBKDF2 with 10^6 iterations
+            const keyBits = await crypto.subtle.deriveBits(
+                {
+                    name: 'PBKDF2',
+                    salt: new TextEncoder().encode(salt),
+                    iterations: 1000000,
+                    hash: 'SHA-256'
+                },
+                passwordKey,
+                256 // 32 bytes
+            );
+
+            // SHA-256 of the key
+            const sha = await crypto.subtle.digest('SHA-256', keyBits);
+
+            // Base64 encode
+            const pw = uint8ArrayToBase64(new Uint8Array(sha));
+
+            // Return first 16 chars + 'Aa0+'
+            return pw.slice(0, 16) + 'Aa0+';
+        }
+
+        // UI state management
+        function updateStatus() {
+            const statusBar = document.getElementById('statusBar');
+            const statusText = document.getElementById('statusText');
+            const timerText = document.getElementById('timerText');
+
+            if (!isUnlocked) {
+                statusBar.className = 'status-bar locked';
+                statusText.textContent = 'Locked';
+                timerText.textContent = '';
+            } else if (blurTime) {
+                const remaining = Math.max(0, LOCK_AFTER_MS - (Date.now() - blurTime));
+                const minutes = Math.floor(remaining / 60000);
+                const seconds = Math.floor((remaining % 60000) / 1000);
+                statusBar.className = 'status-bar warning';
+                statusText.textContent = 'Unlocked (page not focused)';
+                timerText.textContent = `Auto-lock in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            } else {
+                statusBar.className = 'status-bar';
+                statusText.textContent = 'Unlocked';
+                timerText.textContent = '';
+            }
+        }
+
+        function markDirty() {
+            isDirty = true;
+            document.getElementById('dirtyIndicator').style.display = 'inline-block';
+        }
+
+        function markClean() {
+            isDirty = false;
+            document.getElementById('dirtyIndicator').style.display = 'none';
+        }
+
+        async function unlock() {
+            const password = document.getElementById('masterPassword').value;
+            const errorDiv = document.getElementById('unlockError');
+            errorDiv.textContent = '';
+
+            if (!password) {
+                errorDiv.textContent = 'Please enter a password';
+                return;
+            }
+
+            try {
+                const encryptedEl = document.getElementById('encryptedData');
+                const encryptedData = JSON.parse(encryptedEl.textContent);
+
+                if (encryptedData) {
+                    // Decrypt existing data
+                    sites = await decrypt(encryptedData, password);
+                } else {
+                    // No existing data, start fresh
+                    sites = [];
+                }
+
+                masterPassword = password;
+                isUnlocked = true;
+
+                document.getElementById('lockedState').classList.remove('active');
+                document.getElementById('unlockedState').classList.add('active');
+                document.getElementById('downloadSection').style.display = 'block';
+                document.getElementById('masterPassword').value = '';
+
+                renderSites();
+                updateStatus();
+            } catch (e) {
+                console.error(e);
+                errorDiv.textContent = 'Failed to decrypt. Wrong password?';
+            }
+        }
+
+        function lock() {
+            // Clear sensitive data
+            sites = [];
+            masterPassword = null;
+            masterKey = null;
+            isUnlocked = false;
+            blurTime = null;
+
+            if (lockTimeout) {
+                clearTimeout(lockTimeout);
+                lockTimeout = null;
+            }
+
+            // Hide derived passwords
+            document.querySelectorAll('.password-display').forEach(el => {
+                el.classList.remove('visible');
+                el.textContent = '';
+            });
+
+            document.getElementById('lockedState').classList.add('active');
+            document.getElementById('unlockedState').classList.remove('active');
+            document.getElementById('downloadSection').style.display = 'none';
+            document.getElementById('siteList').innerHTML = '<div class="empty-state">No sites added yet</div>';
+
+            updateStatus();
+        }
+
+        function addSite() {
+            const nameInput = document.getElementById('siteInput');
+            const saltInput = document.getElementById('saltInput');
+
+            const name = nameInput.value.trim();
+            const salt = saltInput.value.trim() || name; // Default salt to site name
+
+            if (!name) return;
+
+            // Check for duplicate
+            if (sites.find(s => s.name === name)) {
+                alert('Site already exists');
+                return;
+            }
+
+            sites.push({ name, salt });
+            nameInput.value = '';
+            saltInput.value = '';
+
+            markDirty();
+            renderSites();
+        }
+
+        function removeSite(name) {
+            sites = sites.filter(s => s.name !== name);
+            markDirty();
+            renderSites();
+        }
+
+        function editSalt(name) {
+            const site = sites.find(s => s.name === name);
+            if (!site) return;
+
+            const newSalt = prompt('Enter new salt for ' + name + ':', site.salt);
+            if (newSalt !== null) {
+                site.salt = newSalt || name;
+                markDirty();
+                renderSites();
+            }
+        }
+
+        async function showPassword(name) {
+            const site = sites.find(s => s.name === name);
+            if (!site || !masterPassword) return;
+
+            const displayEl = document.getElementById('pw-' + CSS.escape(name));
+            if (!displayEl) return;
+
+            if (displayEl.classList.contains('visible')) {
+                displayEl.classList.remove('visible');
+                displayEl.textContent = '';
+                return;
+            }
+
+            displayEl.textContent = 'Deriving...';
+            displayEl.classList.add('visible');
+
+            try {
+                const password = await derivePassword(masterPassword, site.salt);
+                displayEl.textContent = password;
+
+                // Copy to clipboard
+                await navigator.clipboard.writeText(password);
+                displayEl.textContent = password + ' (copied!)';
+            } catch (e) {
+                console.error(e);
+                displayEl.textContent = 'Error deriving password';
+            }
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        function renderSites() {
+            const container = document.getElementById('siteList');
+
+            if (sites.length === 0) {
+                container.innerHTML = '<div class="empty-state">No sites added yet</div>';
+                return;
+            }
+
+            container.innerHTML = sites.map(site => `
+                <div class="site-item">
+                    <span class="site-name">${escapeHtml(site.name)}</span>
+                    <span class="site-salt">salt: ${escapeHtml(site.salt)}</span>
+                    <div class="site-actions">
+                        <button onclick="showPassword('${escapeHtml(site.name)}')">Get Password</button>
+                        <button class="secondary" onclick="editSalt('${escapeHtml(site.name)}')">Edit Salt</button>
+                        <button class="danger" onclick="removeSite('${escapeHtml(site.name)}')">Remove</button>
+                    </div>
+                    <div class="password-display" id="pw-${escapeHtml(site.name)}"></div>
+                </div>
+            `).join('');
+        }
+
+        async function downloadCopy() {
+            const messageDiv = document.getElementById('downloadMessage');
+            const confirmPassword = document.getElementById('savePassword').value;
+
+            if (!confirmPassword) {
+                messageDiv.innerHTML = '<span class="error">Please confirm your master password</span>';
+                return;
+            }
+
+            if (confirmPassword !== masterPassword) {
+                messageDiv.innerHTML = '<span class="error">Password does not match</span>';
+                return;
+            }
+
+            try {
+                messageDiv.textContent = 'Encrypting...';
+
+                // Encrypt the current sites data
+                const encrypted = await encrypt(sites, masterPassword);
+
+                // Update the embedded data element
+                document.getElementById('encryptedData').textContent = JSON.stringify(encrypted);
+
+                // Generate HTML
+                let html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+
+                // Verify the embedded data is present
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const embeddedEl = doc.getElementById('encryptedData');
+
+                if (!embeddedEl || embeddedEl.textContent === 'null') {
+                    throw new Error('Embedded data missing from generated HTML');
+                }
+
+                // Download
+                const blob = new Blob([html], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                const timestamp = new Date().toISOString().slice(0, 10);
+                a.download = `salt-manager-${timestamp}.html`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                messageDiv.innerHTML = '<span class="success">Copy downloaded!</span>';
+                document.getElementById('savePassword').value = '';
+                markClean();
+            } catch (e) {
+                console.error(e);
+                messageDiv.innerHTML = '<span class="error">Error: ' + e.message + '</span>';
+            }
+        }
+
+        // Focus/blur handling for auto-lock
+        let statusInterval = null;
+
+        window.addEventListener('blur', () => {
+            if (!isUnlocked) return;
+
+            blurTime = Date.now();
+            lockTimeout = setTimeout(() => {
+                lock();
+            }, LOCK_AFTER_MS);
+
+            // Update timer display
+            statusInterval = setInterval(updateStatus, 1000);
+            updateStatus();
+        });
+
+        window.addEventListener('focus', () => {
+            if (!isUnlocked) return;
+
+            blurTime = null;
+            if (lockTimeout) {
+                clearTimeout(lockTimeout);
+                lockTimeout = null;
+            }
+            if (statusInterval) {
+                clearInterval(statusInterval);
+                statusInterval = null;
+            }
+            updateStatus();
+        });
+
+        // Handle Enter key
+        document.getElementById('masterPassword').addEventListener('keypress', e => {
+            if (e.key === 'Enter') unlock();
+        });
+        document.getElementById('siteInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') addSite();
+        });
+        document.getElementById('saltInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') addSite();
+        });
+        document.getElementById('savePassword').addEventListener('keypress', e => {
+            if (e.key === 'Enter') downloadCopy();
+        });
+
+        // Warn before leaving with unsaved changes
+        window.addEventListener('beforeunload', (e) => {
+            if (isDirty) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        });
+
+        // Initialize
+        updateStatus();
+    </script>
+</body>
+</html>
